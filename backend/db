@@ -1,0 +1,148 @@
+create database where_is_my_bus;
+use where_is_my_bus;
+-- Drivers (admin creates them)
+CREATE TABLE drivers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    driver_name VARCHAR(100) NOT NULL,
+    driver_code CHAR(4) UNIQUE NOT NULL,
+    phone VARCHAR(15),
+    status ENUM('active','inactive') DEFAULT 'active',
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Buses
+CREATE TABLE buses (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    bus_number VARCHAR(20) NOT NULL,
+    registration_number VARCHAR(20) UNIQUE NOT NULL,
+    capacity INT,
+    type ENUM('city','ac','volvo') DEFAULT 'city',
+    status ENUM('active','inactive','maintenance') DEFAULT 'active',
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Routes (blueprint)
+CREATE TABLE routes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    route_name VARCHAR(100) NOT NULL,
+    source VARCHAR(100) NOT NULL,
+    destination VARCHAR(100) NOT NULL,
+    distance DECIMAL(10,2),      -- km
+    duration INT,                -- minutes
+    status ENUM('active','inactive') DEFAULT 'active',
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Route Points (polyline of the whole route)
+CREATE TABLE route_points (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    route_id INT NOT NULL,
+    latitude DECIMAL(10,7) NOT NULL,
+    longitude DECIMAL(10,7) NOT NULL,
+    sequence INT NOT NULL,
+    FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
+);
+
+-- Bus Stops (admin-defined along the route)
+CREATE TABLE bus_stops (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    route_id INT NOT NULL,
+    stop_name VARCHAR(100) NOT NULL,
+    latitude DECIMAL(10,7) NOT NULL,
+    longitude DECIMAL(10,7) NOT NULL,
+    arrival_order INT NOT NULL,
+    FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
+);
+
+-- Trip Assignments (admin assigns a driver+ bus to a route)
+CREATE TABLE trip_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    driver_id INT NOT NULL,
+    bus_id INT NOT NULL,
+    route_id INT NOT NULL,
+    trip_date DATE NOT NULL,
+    shift ENUM('morning','evening','night') DEFAULT 'morning',
+    status ENUM('pending','active','completed','cancelled') DEFAULT 'pending',
+    started_at DATETIME,
+    ended_at DATETIME,
+    FOREIGN KEY (driver_id) REFERENCES drivers(id),
+    FOREIGN KEY (bus_id) REFERENCES buses(id),
+    FOREIGN KEY (route_id) REFERENCES routes(id)
+);
+
+-- Trip History (archived completed trips)
+CREATE TABLE trip_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    trip_assignment_id INT NOT NULL,
+    driver_id INT NOT NULL,
+    bus_id INT NOT NULL,
+    route_id INT NOT NULL,
+    started_at DATETIME NOT NULL,
+    ended_at DATETIME NOT NULL,
+    distance_covered DECIMAL(10,2),
+    avg_speed DECIMAL(5,2),
+    FOREIGN KEY (trip_assignment_id) REFERENCES trip_assignments(id)
+);
+
+-- Live Locations (only for active trips)
+CREATE TABLE live_locations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    trip_id INT NOT NULL,
+    latitude DECIMAL(10,7) NOT NULL,
+    longitude DECIMAL(10,7) NOT NULL,
+    speed DECIMAL(5,2),
+    heading DECIMAL(5,2),
+    snapped_lat DECIMAL(10,7),
+    snapped_lng DECIMAL(10,7),
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trip_id) REFERENCES trip_assignments(id)
+);
+
+-- Issues reported by driver
+CREATE TABLE issues (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    trip_id INT NOT NULL,
+    issue_type ENUM('accident','mechanical_failure','heavy_traffic','tyre_puncture','road_block','other'),
+    description TEXT,
+    latitude DECIMAL(10,7),
+    longitude DECIMAL(10,7),
+    status ENUM('open','resolved') DEFAULT 'open',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trip_id) REFERENCES trip_assignments(id)
+);
+
+-- Emergency alerts
+CREATE TABLE emergency_alerts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    trip_id INT NOT NULL,
+    latitude DECIMAL(10,7),
+    longitude DECIMAL(10,7),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    resolved BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (trip_id) REFERENCES trip_assignments(id)
+);
+
+-- Admins
+CREATE TABLE admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('super','operator') DEFAULT 'super',
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Notifications (for admin)
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    type ENUM('emergency','issue','trip_started','trip_ended'),
+    message TEXT,
+    trip_id INT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO admins (username, password_hash, role) 
+VALUES ('admin', '$2a$10$...', 'super');
